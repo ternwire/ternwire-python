@@ -4,7 +4,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest import mock
 
-from ternwire import TernwireClient
+from ternwire import DEFAULT_BASE_URL, TernwireClient
 
 API_KEY = "em_test_origincheck"
 PAGE = b'{"data":[],"page":{"nextCursor":null,"hasMore":false}}'
@@ -27,7 +27,50 @@ def recording_server(seen):
     return server
 
 
+class FakeResponse:
+    status = 200
+    headers = {}
+
+    def read(self):
+        return PAGE
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+
+class FakeOpener:
+    def __init__(self):
+        self.urls = []
+
+    def open(self, request, timeout):
+        self.urls.append(request.full_url)
+        return FakeResponse()
+
+
+def requested_urls(*client_args):
+    opener = FakeOpener()
+    with mock.patch("ternwire.client.build_opener", return_value=opener):
+        TernwireClient(API_KEY, *client_args).list_email_templates()
+    return opener.urls
+
+
 class BaseUrlTransportTest(unittest.TestCase):
+    def test_omitted_origin_sends_to_ternwire_com(self):
+        self.assertEqual(DEFAULT_BASE_URL, "https://ternwire.com")
+        self.assertEqual(requested_urls(), ["https://ternwire.com/v1/templates"])
+        self.assertEqual(requested_urls(None), ["https://ternwire.com/v1/templates"])
+
+    def test_explicit_origin_wins_over_default(self):
+        self.assertEqual(requested_urls("https://staging.example.com"),
+                         ["https://staging.example.com/v1/templates"])
+
+    def test_rejects_empty_origin(self):
+        with self.assertRaisesRegex(ValueError, "HTTP\\(S\\) origin"):
+            TernwireClient(API_KEY, "")
+
     def test_rejects_cleartext_non_loopback_origins(self):
         for base_url in ("http://api.example.com", "http://10.0.0.5:3001", "http://api:3001",
                          "http://localhost.example.com", "http://127.0.0.1.nip.io",
