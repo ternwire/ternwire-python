@@ -9,6 +9,8 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
+DEFAULT_BASE_URL = "https://ternwire.com"
+
 
 class TernwireApiError(Exception):
     def __init__(self, status: int, raw_body: str, headers: dict[str, str]):
@@ -37,9 +39,11 @@ class _NoRedirect(HTTPRedirectHandler):
 
 
 class TernwireClient:
-    def __init__(self, api_key: str, base_url: str, timeout: float = 30):
+    def __init__(self, api_key: str, base_url: str | None = None, timeout: float = 30):
         if not re.fullmatch(r"em_(live|test)_[A-Za-z0-9_-]+", api_key):
             raise ValueError("Use an em_live_ or em_test_ API key")
+        if base_url is None:
+            base_url = DEFAULT_BASE_URL
         origin = urlsplit(base_url)
         if (origin.scheme not in ("http", "https") or not origin.hostname
                 or origin.username or origin.password or origin.path not in ("", "/")
